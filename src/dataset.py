@@ -95,7 +95,7 @@ class Data(object):
             if product_clicked:
                 product_id = int(product_id)
                 if product_id in prod_info_dict: #We might have the product
-                    prod_info = prod_info_dict[product_id]  
+                    prod_info = prod_info_dict[product_id]
             
             if session_id not in query_sessions:
                 query_sessions[session_id] = QuerySession(session_id,
@@ -116,10 +116,11 @@ class Data(object):
             for id in query_sessions:
                 q_session = query_sessions[id]
                 q_session.check_query_rephrase()
-                #print('is_rephrase_q: %s\n%s' % (str(q_session.is_rephrase_q), q_session))
-                if q_session.is_rephrase_q:
+                q_session.add_product_to_rephrase()
+                #print('has_rephrase_q: %s\n%s' % (str(q_session.has_rephrase_q), q_session))
+                if q_session.has_rephrase_q:
                     f.write(str(query_sessions[id])+'\n')
-                    n_rephrases += 1
+                    n_rephrases += len(q_session.rephrase_seqs)
         print('Total rephrase queries: %d' % n_rephrases)
         return query_sessions
                 
@@ -150,6 +151,8 @@ class QuerySession(object):
         self.time_stamps = [datetime.strptime(time_stamp.split('.')[0],
                            '%Y-%m-%d %H:%M:%S')]
         self.prods_info = [prod_info]
+        self.has_rephrase_q = None
+        self.rephrase_seqs = []
         
     def __str__(self):
         q_str = ''
@@ -164,6 +167,11 @@ class QuerySession(object):
                 time_diff = str(time_diff.total_seconds())
             q_str += q+' ('+str(click)+' '+time_diff+')'+'| '
             i += 1
+        q_str += '\n'
+        for i, j in self.rephrase_seqs:
+            for q in range(i, j+1):
+                q_str += self.queries[q]+' -> '
+            q_str = q_str[:-4]+'| '
         return q_str
         
     def add_interaction(self,
@@ -193,18 +201,33 @@ class QuerySession(object):
         is a sequence of queries started with a no click and ending with another
         query with a click.
         '''
-        self.is_rephrase_q = False
+        self.has_rephrase_q = False
         started_rephrase = False
         bl_queries = {} #sometimes there is a sequence with equal queries without clicks
+        i = 0
+        begin_rephrase = -1
         for query, click in zip(self.queries, self.clicks):
             if query in bl_queries:
                 started_rephrase = False
-            elif not click and query:
+            elif not click and not started_rephrase:
                 started_rephrase = True
+                begin_rephrase = i
             elif click and started_rephrase:
-                self.is_rephrase_q = True
-                break
+                self.has_rephrase_q = True
+                self.rephrase_seqs.append([begin_rephrase, i])
+                begin_rephrase = -1
+                started_rephrase = False
             bl_queries[query] = True
+            i += 1
+    
+    def add_product_to_rephrase(self):
+        '''
+        Adds the products to queries before the final rephrased query.
+        This can be done since the rephrased has a o product click.
+        '''
+        for i, j in self.rephrase_seqs:
+            for q in range(i, j):
+                self.prods_info[q] = self.prods_info[j] #the last query of a rephrase has a product
                         
 Data('/home/pjdrm/Downloads/products.csv',
      '/home/pjdrm/Downloads/queries_sample.csv',
