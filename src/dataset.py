@@ -112,16 +112,24 @@ class Data(object):
                                                            prod_info)
         #Mainly for understanding the data better
         n_rephrases = 0
+        n_q_no_prod = 0
+        n_q_prod = 0
         with open('rephrase_queries.txt', 'w+') as f:
             for id in query_sessions:
+                if id == 902671917:
+                    print()
                 q_session = query_sessions[id]
                 q_session.check_query_rephrase()
-                q_session.add_product_to_rephrase()
                 #print('has_rephrase_q: %s\n%s' % (str(q_session.has_rephrase_q), q_session))
                 if q_session.has_rephrase_q:
                     f.write(str(query_sessions[id])+'\n')
                     n_rephrases += len(q_session.rephrase_seqs)
-        print('Total rephrase queries: %d' % n_rephrases)
+                if q_session.has_q_no_prod:
+                    n_q_no_prod += 1
+                else:
+                    n_q_prod += 1
+        print('Total rephrase queries: %d\nTotal sessions with no product: %d\nTotal sessions with all products: %d'\
+              % (n_rephrases, n_q_no_prod, n_q_prod))
         return query_sessions
                 
 class QuerySession(object):
@@ -151,8 +159,9 @@ class QuerySession(object):
         self.time_stamps = [datetime.strptime(time_stamp.split('.')[0],
                            '%Y-%m-%d %H:%M:%S')]
         self.prods_info = [prod_info]
-        self.has_rephrase_q = None
         self.rephrase_seqs = []
+        self.has_rephrase_q = None
+        self.has_q_no_prod = None
         
     def __str__(self):
         q_str = ''
@@ -170,9 +179,9 @@ class QuerySession(object):
         q_str += '\n'
         for i, j in self.rephrase_seqs:
             for q in range(i, j+1):
-                q_str += self.queries[q]+' -> '
+                q_str += str(self.prods_info[q])+' -> '
             q_str = q_str[:-4]+'| '
-        return q_str
+        return q_str+'\n'+str(self.has_q_no_prod)
         
     def add_interaction(self,
                         search_query,
@@ -207,7 +216,8 @@ class QuerySession(object):
         i = 0
         begin_rephrase = -1
         for query, click in zip(self.queries, self.clicks):
-            if query in bl_queries:
+            is_bl = query in bl_queries
+            if is_bl:
                 started_rephrase = False
             elif not click and not started_rephrase:
                 started_rephrase = True
@@ -217,8 +227,22 @@ class QuerySession(object):
                 self.rephrase_seqs.append([begin_rephrase, i])
                 begin_rephrase = -1
                 started_rephrase = False
-            bl_queries[query] = True
+            
+            prod_i = self.prods_info[i]
+            if not is_bl:
+                bl_queries[query] = prod_i
+            else:
+                if bl_queries[query] is None:
+                    bl_queries[query] = prod_i
             i += 1
+            
+        self.add_product_to_rephrase()
+        for i, query in enumerate(self.queries): #Normalizing repeated queries
+            if query in bl_queries:
+                bl_q_prod = bl_queries[query]
+                if bl_q_prod is not None:
+                    self.prods_info[i] = bl_q_prod
+        self.has_q_no_prod = None in self.prods_info
     
     def add_product_to_rephrase(self):
         '''
