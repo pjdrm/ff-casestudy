@@ -5,7 +5,9 @@ Created on Aug 28, 2019
 '''
 from datetime import datetime
 from tqdm import tqdm
-import re
+from sklearn.feature_extraction.text import CountVectorizer
+import numpy as np
+from numpy.core.fromnumeric import prod
 
 WOMEN = ',WOMEN,'
 MEN = ',MEN,'
@@ -17,7 +19,11 @@ class Data(object):
     Class to load and pre-process files with query and product data.
     '''
 
-    def __init__(self, products_data_path, query_data_path, max_samples=None):
+    def __init__(self,
+                 products_data_path,
+                 query_data_path,
+                 max_samples=None,
+                 max_W=None):
         '''
         Constructor
         :param products_data_path: path to product file
@@ -29,6 +35,55 @@ class Data(object):
                                               max_samples,
                                               prod_info,
                                               categories)
+        self.W_counts, self.Y = self.build_mat(query_sessions,
+                                               max_W,
+                                               len(categories.keys()))
+        
+    def build_mat(self, query_sessions, max_W, n_cats): #TODO: add padding
+        '''
+        Builds matrix representation of query sequences
+        :param query_sessions: list of query sessions
+        :param max_W: max number of features in the counts query matrix
+        :param n_cats: number of product categories
+        '''
+        queries_str = []
+        Y = []
+        i = 0
+        q_session_spans = []
+        filtered_s_ids = []
+        for s_id in query_sessions:
+            q_session = query_sessions[s_id]
+            if not q_session.has_q_no_prod:
+                filtered_s_ids.append(s_id)
+                start_span = i
+                for query, cat in zip(q_session.queries, q_session.cats):
+                    queries_str.append(query)
+                    Y.append(cat)
+                    i += 1
+                end_span = i
+                q_session_spans.append([start_span, end_span])
+            
+        vectorizer = CountVectorizer(max_features=max_W)
+        W_counts = vectorizer.fit_transform(queries_str)
+        W_counts_final = []
+        Y_final = []
+        for i, j in q_session_spans:
+            W_seq = []
+            Y_seq = []
+            for w_vec in W_counts[i:j]:
+                w_vec = np.array(w_vec.todense())[0]
+                W_seq.append(w_vec)
+            for y in Y[i:j]: 
+                oh_y = [0]*n_cats
+                oh_y[y] = 1
+                Y_seq.append(oh_y)
+            W_counts_final.append(W_seq)
+            Y_final.append(Y_seq)
+            
+        W_counts_final = np.array(W_counts_final)
+        Y_final = np.array(Y_final)
+        print('Done building matrix')
+        return W_counts_final, Y_final
     
     def process_products(self, products_data_path):
         '''
@@ -44,7 +99,6 @@ class Data(object):
         print('Loading products')
         for i in tqdm(range(len(lins))):
             lin = lins[i]
-            #print(lin)
             if WOMEN in lin:
                 gender = WOMEN
             elif MEN in lin:
@@ -63,14 +117,12 @@ class Data(object):
             category2 = lin_split[2]
             prod_info[prod_id] = {'gender': gender,
                                   'cat1': category1,
-                                  'cat2': category2}
+                                  'cat2': category2} #TODO: include brand
             cat_merged = gender+category1+category2
             if cat_merged not in categories:
                 categories[cat_merged] = cat_ind
                 cat_ind += 1
-                
-            #print(prod_info[prod_id])
-        
+                        
         return prod_info, categories
         
     def process_queries(self,
@@ -105,12 +157,10 @@ class Data(object):
             product_clicked = eval(product_clicked)
             session_id = int(session_id)
             prod_info = None
-            cat = -1
             if product_clicked:
                 product_id = int(product_id)
                 if product_id in prod_info_dict: #We might not have the product
                     prod_info = prod_info_dict[product_id]
-                    cat = categories[prod_info['gender']+prod_info['cat1']+prod_info['cat2']]
             
             if session_id not in query_sessions:
                 query_sessions[session_id] = QuerySession(session_id,
@@ -118,15 +168,13 @@ class Data(object):
                                                           product_clicked,
                                                           product_id,
                                                           time_stamp,
-                                                          prod_info,
-                                                          cat)
+                                                          prod_info)
             else:
                 query_sessions[session_id].add_interaction(search_query,
                                                            product_clicked,
                                                            product_id,
                                                            time_stamp,
-                                                           prod_info,
-                                                           cat)
+                                                           prod_info)
         #Mainly for understanding the data better
         n_rephrases = 0
         n_q_no_prod = 0
@@ -142,6 +190,7 @@ class Data(object):
                 if q_session.has_q_no_prod:
                     n_q_no_prod += 1
                 else:
+                    q_session.build_cats(categories)
                     n_q_prod += 1
         print('Total rephrase queries: %d\nTotal sessions with no product: %d\nTotal sessions with all products: %d'\
               % (n_rephrases, n_q_no_prod, n_q_prod))
@@ -157,8 +206,7 @@ class QuerySession(object):
                        product_clicked,
                        product_id,
                        time_stamp,
-                       prod_info,
-                       cat):
+                       prod_info):
         '''
         Constructor
         :param session_id: session identifier
@@ -178,7 +226,7 @@ class QuerySession(object):
         self.rephrase_seqs = []
         self.has_rephrase_q = None
         self.has_q_no_prod = None
-        self.cats = [cat]
+        self.cats = []
         
     def __str__(self):
         q_str = ''
@@ -205,8 +253,7 @@ class QuerySession(object):
                         product_clicked,
                         product_id,
                         time_stamp,
-                        prod_info,
-                        cat):
+                        prod_info):
         '''
         Adds a new query made in a session.
         :param search_query: query enter by user
@@ -221,7 +268,6 @@ class QuerySession(object):
         self.time_stamps.append(datetime.strptime(time_stamp.split('.')[0],
                                 '%Y-%m-%d %H:%M:%S'))
         self.prods_info.append(prod_info)
-        self.cats.append(cat)
         
     def check_query_rephrase(self):
         '''
@@ -271,8 +317,18 @@ class QuerySession(object):
         for i, j in self.rephrase_seqs:
             for q in range(i, j):
                 self.prods_info[q] = self.prods_info[j] #the last query of a rephrase has a product
+                
+    def build_cats(self, categories):
+        '''
+        Adds a list of categories with an integer representation.
+        :param categories: dictionary where keys are strings merged from product categories
+        '''
+        for prod_info in self.prods_info:
+            key = prod_info['gender']+prod_info['cat1']+prod_info['cat2']
+            self.cats.append(categories[key])
                         
 Data('/home/pjdrm/Downloads/products.csv',
      '/home/pjdrm/Downloads/queries_sample.csv',
-     max_samples=None)
+     max_samples=None,
+     max_W=100)
 
