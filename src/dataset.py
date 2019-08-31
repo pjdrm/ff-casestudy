@@ -7,7 +7,7 @@ from datetime import datetime
 from tqdm import tqdm
 from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
-from numpy.core.fromnumeric import prod
+import copy
 
 WOMEN = ',WOMEN,'
 MEN = ',MEN,'
@@ -18,7 +18,6 @@ class Data(object):
     '''
     Class to load and pre-process files with query and product data.
     '''
-
     def __init__(self,
                  products_data_path,
                  query_data_path,
@@ -51,6 +50,7 @@ class Data(object):
         i = 0
         q_session_spans = []
         filtered_s_ids = []
+        target_seq_len = -1
         for s_id in query_sessions:
             q_session = query_sessions[s_id]
             if not q_session.has_q_no_prod:
@@ -62,11 +62,17 @@ class Data(object):
                     i += 1
                 end_span = i
                 q_session_spans.append([start_span, end_span])
+                seq_len = end_span-start_span
+                if seq_len > target_seq_len:
+                    target_seq_len = seq_len
             
         vectorizer = CountVectorizer(max_features=max_W)
         W_counts = vectorizer.fit_transform(queries_str)
         W_counts_final = []
         Y_final = []
+        padding_w_vec = np.zeros(len(vectorizer.vocabulary_))
+        padding_y = np.zeros(n_cats+1)
+        padding_y[-1] = 1 #Its the dummy cat
         for i, j in q_session_spans:
             W_seq = []
             Y_seq = []
@@ -74,17 +80,34 @@ class Data(object):
                 w_vec = np.array(w_vec.todense())[0]
                 W_seq.append(w_vec)
             for y in Y[i:j]: 
-                oh_y = [0]*n_cats
+                oh_y = [0]*(n_cats+1)
                 oh_y[y] = 1
                 Y_seq.append(oh_y)
             W_counts_final.append(W_seq)
             Y_final.append(Y_seq)
+            seq_len = j-i
+            if seq_len < target_seq_len:
+                n_pad = target_seq_len-seq_len
+                self.pad_seq(n_pad, padding_w_vec, padding_y, W_seq, Y_seq)
             
         W_counts_final = np.array(W_counts_final)
         Y_final = np.array(Y_final)
         print('Done building matrix')
         return W_counts_final, Y_final
     
+    def pad_seq(self, n_pad, padding_w_vec, padding_y, W_seq, Y_seq):
+        '''
+        Adds zero post padding to vectors.
+        :param n_pad: number of padding vecs to add
+        :param padding_w_vec: w_vec padding template
+        :param padding_y: y padding template
+        :param W_seq: sequence of words to be padded
+        :param Y_seq: sequence of labels to be padded
+        '''
+        for p in range(n_pad):
+            W_seq.append(copy.deepcopy(padding_w_vec))
+            Y_seq.append(copy.deepcopy(padding_y))     
+
     def process_products(self, products_data_path):
         '''
         Parses the products file to find the categories of the products.
@@ -329,6 +352,6 @@ class QuerySession(object):
                         
 Data('/home/pjdrm/Downloads/products.csv',
      '/home/pjdrm/Downloads/queries_sample.csv',
-     max_samples=None,
+     max_samples=100,
      max_W=100)
 
