@@ -24,10 +24,11 @@ class Data(object):
         :param query_data_path: path to query file
         :param max_samples: maximum number of queries to process
         '''
-        prod_info = self.process_products(products_data_path)
+        prod_info, categories = self.process_products(products_data_path)
         query_sessions = self.process_queries(query_data_path,
                                               max_samples,
-                                              prod_info)
+                                              prod_info,
+                                              categories)
     
     def process_products(self, products_data_path):
         '''
@@ -38,6 +39,8 @@ class Data(object):
             lins = f.readlines()[1:]
         
         prod_info = {}
+        categories = {}
+        cat_ind = 0
         print('Loading products')
         for i in tqdm(range(len(lins))):
             lin = lins[i]
@@ -61,10 +64,20 @@ class Data(object):
             prod_info[prod_id] = {'gender': gender,
                                   'cat1': category1,
                                   'cat2': category2}
+            cat_merged = gender+category1+category2
+            if cat_merged not in categories:
+                categories[cat_merged] = cat_ind
+                cat_ind += 1
+                
             #print(prod_info[prod_id])
-        return prod_info
         
-    def process_queries(self, query_data_path, max_samples, prod_info_dict):
+        return prod_info, categories
+        
+    def process_queries(self,
+                        query_data_path,
+                        max_samples,
+                        prod_info_dict,
+                        categories):
         '''
         Parses a queries files to organize them by session.
         :param query_data_path: path to queries file
@@ -92,10 +105,12 @@ class Data(object):
             product_clicked = eval(product_clicked)
             session_id = int(session_id)
             prod_info = None
+            cat = -1
             if product_clicked:
                 product_id = int(product_id)
-                if product_id in prod_info_dict: #We might have the product
+                if product_id in prod_info_dict: #We might not have the product
                     prod_info = prod_info_dict[product_id]
+                    cat = categories[prod_info['gender']+prod_info['cat1']+prod_info['cat2']]
             
             if session_id not in query_sessions:
                 query_sessions[session_id] = QuerySession(session_id,
@@ -103,21 +118,21 @@ class Data(object):
                                                           product_clicked,
                                                           product_id,
                                                           time_stamp,
-                                                          prod_info)
+                                                          prod_info,
+                                                          cat)
             else:
                 query_sessions[session_id].add_interaction(search_query,
                                                            product_clicked,
                                                            product_id,
                                                            time_stamp,
-                                                           prod_info)
+                                                           prod_info,
+                                                           cat)
         #Mainly for understanding the data better
         n_rephrases = 0
         n_q_no_prod = 0
         n_q_prod = 0
         with open('rephrase_queries.txt', 'w+') as f:
             for id in query_sessions:
-                if id == 902671917:
-                    print()
                 q_session = query_sessions[id]
                 q_session.check_query_rephrase()
                 #print('has_rephrase_q: %s\n%s' % (str(q_session.has_rephrase_q), q_session))
@@ -142,7 +157,8 @@ class QuerySession(object):
                        product_clicked,
                        product_id,
                        time_stamp,
-                       prod_info):
+                       prod_info,
+                       cat):
         '''
         Constructor
         :param session_id: session identifier
@@ -162,6 +178,7 @@ class QuerySession(object):
         self.rephrase_seqs = []
         self.has_rephrase_q = None
         self.has_q_no_prod = None
+        self.cats = [cat]
         
     def __str__(self):
         q_str = ''
@@ -188,7 +205,8 @@ class QuerySession(object):
                         product_clicked,
                         product_id,
                         time_stamp,
-                        prod_info):
+                        prod_info,
+                        cat):
         '''
         Adds a new query made in a session.
         :param search_query: query enter by user
@@ -203,6 +221,7 @@ class QuerySession(object):
         self.time_stamps.append(datetime.strptime(time_stamp.split('.')[0],
                                 '%Y-%m-%d %H:%M:%S'))
         self.prods_info.append(prod_info)
+        self.cats.append(cat)
         
     def check_query_rephrase(self):
         '''
