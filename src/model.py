@@ -11,7 +11,7 @@ from dataset import Data
 import sys
 import json
 
-class BiLSTMCodeSwitch(object):
+class LSTMQuerySeq(object):
     '''
     LSTM deep neural network for the code switch task.
     The LSTM learns how to classify sequences of queries
@@ -63,7 +63,7 @@ if __name__ == "__main__":
                    max_samples=cfg['dataset']['max_samples'],
                    max_W=cfg['dataset']['max_W'])
     
-    bilst_cs = BiLSTMCodeSwitch(dataset,
+    bilst_cs = LSTMQuerySeq(dataset,
                                 cfg['model']['lstm_units'],
                                 cfg['model']['epochs'])
     bilst_cs.train_bilstm(cfg['model']['out_model_fp'])
