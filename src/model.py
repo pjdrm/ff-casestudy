@@ -6,10 +6,10 @@ Created on Aug 31, 2019
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
-from keras.layers import Bidirectional
 from dataset import Data
 import sys
 import json
+import joblib
 
 class LSTMQuerySeq(object):
     '''
@@ -38,7 +38,7 @@ class LSTMQuerySeq(object):
                            optimizer='adam',
                            metrics=['accuracy'])
     
-    def train_bilstm(self, out_model_fp):
+    def train_lstm(self, out_model_fp):
         '''
         Trains the LSTM model and saves the model to disk.
         :param out_model_fp: out model file path
@@ -47,6 +47,8 @@ class LSTMQuerySeq(object):
                        self.dataset.Y,
                        epochs=self.epochs,
                        verbose=2)
+        
+        joblib.dump(self.model, out_model_fp)
         
                 
 if __name__ == "__main__":
@@ -63,7 +65,9 @@ if __name__ == "__main__":
                    max_samples=cfg['dataset']['max_samples'],
                    max_W=cfg['dataset']['max_W'])
     
-    bilst_cs = LSTMQuerySeq(dataset,
-                                cfg['model']['lstm_units'],
-                                cfg['model']['epochs'])
-    bilst_cs.train_bilstm(cfg['model']['out_model_fp'])
+    lst_cs = LSTMQuerySeq(dataset,
+                            cfg['model']['lstm_units'],
+                            cfg['model']['epochs'])
+    lst_cs.train_lstm(cfg['model']['out_model_fp'])
+    
+    
