@@ -13,6 +13,7 @@ WOMEN = ',WOMEN,'
 MEN = ',MEN,'
 KIDS = ',KIDS,'
 UNISEX = ',UNISEX,'
+DUMMY_CAT = 'dummy'
 
 class Data(object):
     '''
@@ -34,9 +35,12 @@ class Data(object):
                                               max_samples,
                                               prod_info,
                                               categories)
+        n_cats = len(categories.keys())
+        categories[DUMMY_CAT] = n_cats
+        self.cat_map = {v: k for k, v in categories.items()}
         self.W_counts, self.Y = self.build_mat(query_sessions,
                                                max_W,
-                                               len(categories.keys()))
+                                               n_cats)
         
     def build_mat(self, query_sessions, max_W, n_cats): #TODO: add padding
         '''
@@ -349,9 +353,4 @@ class QuerySession(object):
         for prod_info in self.prods_info:
             key = prod_info['gender']+prod_info['cat1']+prod_info['cat2']
             self.cats.append(categories[key])
-                        
-Data('/home/pjdrm/Downloads/products.csv',
-     '/home/pjdrm/Downloads/queries_sample.csv',
-     max_samples=100,
-     max_W=100)
 
