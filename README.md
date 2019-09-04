@@ -1,4 +1,5 @@
 # Farfetch Data Science case study
+The resulting model of this work is in the *lstm_query_seq.model* file.
 
 ## Requirements
 - Python 3.6 (recommended)
