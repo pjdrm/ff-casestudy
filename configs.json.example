@@ -1,0 +1,13 @@
+{
+	"dataset": {
+		"products_path": "FILE PATH",
+		"queries_path": "FILE PATH",
+		"max_samples": 100,
+		"max_W": 100
+	},
+	"model": {
+		"out_model_fp": "FILE PATH",
+		"lstm_units": 50,
+		"epochs": 100
+	}
+}
